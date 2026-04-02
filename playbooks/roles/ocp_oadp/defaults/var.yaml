@@ -1,0 +1,12 @@
+oadp_namespace: openshift-adp
+operator_name: redhat-oadp-operator
+operator_group: openshift-adp-og
+oadp_version: "1.4.9"  #1.4.z
+oadp_major_minor: "1.4"   #1.3/1.4/1.5/1.6
+channel: stable-1.4  #version has to be changed accroding to the oadp version
+catalogsource_name: stage-operators
+catalogsource_namespace: openshift-marketplace
+index_image: quay.io/redhat-user-workloads/ocp-art-tenant/art-fbc:v4.18__operator_nvr__oadp-operator-container-1.4.9-202603021649.p2.gf7afa30.assembly.stream.el9
+installplan_approval: Automatic
+repository='stage' 
+stream: "downstream" #upstream / downstream
