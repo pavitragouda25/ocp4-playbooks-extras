@@ -1,0 +1,163 @@
+---
+- name: Install OADP Operator on OpenShift (Stage / IIB)
+  hosts: localhost
+  gather_facts: false
+
+  vars_files:
+    - examples/ocp_oadp_vars.yaml
+
+  tasks:
+
+  # Pre-checks ocp version (Equivalent to version verification)
+ 
+  - name: Get OCP version
+    kubernetes.core.k8s_info:
+      api_version: config.openshift.io/v1
+      kind: ClusterVersion
+      name: version
+    register: ocp_version
+
+  - name: Display OCP Version
+    debug:
+      msg: "OCP Version: {{ ocp_version.resources[0].status.desired.version }}"
+
+  
+  # create Namespace and OperatorGroup
+  
+  - name: Create OADP namespace
+    kubernetes.core.k8s:
+      api_version: v1
+      kind: Namespace
+      name: "{{ oadp_namespace }}"
+      state: present
+
+  - name: Create OperatorGroup
+    kubernetes.core.k8s:
+      state: present
+      definition:
+        apiVersion: operators.coreos.com/v1
+        kind: OperatorGroup
+        metadata:
+          name: "{{ operator_group }}"
+          namespace: "{{ oadp_namespace }}"
+        spec:
+          targetNamespaces:
+            - "{{ oadp_namespace }}"
+
+ 
+  # Pause MCP (script pauses master + worker)
+ 
+  - name: Pause MCPs
+    k8s:
+      api_version: machineconfiguration.openshift.io/v1
+      kind: MachineConfigPool
+      state: present
+      merge_type: merge
+      name: "{{ item }}"
+      definition:
+        spec:
+          paused: true
+    loop:
+      - master
+      - worker
+
+  - name: Apply ImageDigestMirrorSet
+    kubernetes.core.k8s:
+      state: present
+      src: files/ImageContentSourcePolicy.yaml
+
+  - name: Resume MCPs
+    k8s:
+      api_version: machineconfiguration.openshift.io/v1
+      kind: MachineConfigPool
+      state: present
+      merge_type: merge
+      name: "{{ item }}"
+      definition:
+        spec:
+          paused: false
+    loop:
+      - master
+      - worker
+
+  - name: Wait for MCPs to be updated
+    shell: oc wait mcp --all --for=condition=updated --timeout=10m
+    register: mcp_wait
+    changed_when: false
+
+  
+  # create CatalogSource (Stage IIB)
+  
+  - name: Create CatalogSource
+    kubernetes.core.k8s:
+      state: present
+      definition:
+        apiVersion: operators.coreos.com/v1alpha1
+        kind: CatalogSource
+        metadata:
+          name: "{{ catalogsource_name }}"
+          namespace: "{{ catalogsource_namespace }}"
+        spec:
+          sourceType: grpc
+          image: "{{ index_image }}"
+          displayName: OADP Stage Operators
+          publisher: Red Hat QE
+
+  - name: Wait for CatalogSource pod
+    kubernetes.core.k8s_info:
+      kind: Pod
+      namespace: "{{ catalogsource_namespace }}"
+      label_selectors:
+        - olm.catalogSource={{ catalogsource_name }}
+    until: result.resources | length > 0
+    retries: 30
+    delay: 10
+    register: result
+
+  
+  # create Subscription
+  
+  - name: Create OADP Subscription
+    kubernetes.core.k8s:
+      state: present
+      definition:
+        apiVersion: operators.coreos.com/v1alpha1
+        kind: Subscription
+        metadata:
+          name: "{{ operator_name }}"
+          namespace: "{{ oadp_namespace }}"
+        spec:
+          channel: "{{ channel }}"
+          name: "{{ operator_name }}"
+          source: "{{ catalogsource_name }}"
+          sourceNamespace: "{{ catalogsource_namespace }}"
+          installPlanApproval: "{{ installplan_approval }}"
+
+
+  # InstallPlan approval (Automatic still sometimes needs patch)
+ 
+  - name: Approve InstallPlan if needed
+    shell: |
+      IP=$(oc get installplan -n {{ oadp_namespace }} \
+      -o jsonpath='{.items[0].metadata.name}')
+      oc patch installplan $IP -n {{ oadp_namespace }} \
+      --type=merge -p '{"spec":{"approved":true}}'
+    changed_when: false
+
+  
+  # Wait for CSV to create
+  
+  - name: Wait for OADP CSV to succeed
+    kubernetes.core.k8s_info:
+      api_version: operators.coreos.com/v1alpha1
+      kind: ClusterServiceVersion
+      namespace: "{{ oadp_namespace }}"
+    until: >
+      result.resources
+      | selectattr('metadata.name','search','oadp-operator')
+      | selectattr('status.phase','equalto','Succeeded')
+      | list
+      | length > 0
+    retries: 30
+    delay: 20
+    register: result
