@@ -1,0 +1,6 @@
+---
+- name: Automate oadp operator install on OpenShift
+  hosts: bastion 
+  gather_facts: no  
+  roles:
+  - ocp-oadp
