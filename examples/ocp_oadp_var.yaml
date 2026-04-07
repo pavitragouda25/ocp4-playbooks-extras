@@ -1,6 +1,7 @@
 oadp_namespace: openshift-adp
 operator_name: redhat-oadp-operator
 operator_group: openshift-adp-og
+oadp_branch: "" #oadp version branch i.e oadp-1.4
 oadp_version: ""  #OADP version to be installed 1.4.z
 oadp_major_minor: ""   #1.3/1.4/1.5/1.6
 oadp_branch: "" #swith the branch to oadp version branch
