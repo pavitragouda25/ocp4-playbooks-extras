@@ -1,15 +1,5 @@
 ---
-- name: Install OADP Operator on OpenShift (Stage / IIB)
-  hosts: localhost
-  gather_facts: false
 
-  vars_files:
-    - examples/ocp_oadp_vars.yaml
-
-  tasks:
-
-  # Pre-checks ocp version (Equivalent to version verification)
- 
   - name: Get OCP version
     kubernetes.core.k8s_info:
       api_version: config.openshift.io/v1
@@ -64,7 +54,23 @@
   - name: Apply ImageDigestMirrorSet
     kubernetes.core.k8s:
       state: present
-      src: files/ImageContentSourcePolicy.yaml
+      definition:
+        apiVersion: operator.openshift.io/v1alpha1
+        kind: ImageContentSourcePolicy
+        metadata:
+          name: brew-registry
+        spec:
+          repositoryDigestMirrors:
+          - mirrors:
+            - brew.registry.redhat.io
+            source: registry.redhat.io
+          - mirrors:
+            - brew.registry.redhat.io
+            source: registry.stage.redhat.io
+          - mirrors:
+            - brew.registry.redhat.io
+            source: registry-proxy.engineering.redhat.com
+
 
   - name: Resume MCPs
     k8s:
