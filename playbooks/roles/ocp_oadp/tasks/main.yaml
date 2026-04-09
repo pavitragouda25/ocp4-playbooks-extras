@@ -1,5 +1,17 @@
 ---
+- name: Invoke the role check-cluster-health to check cluster status
+  include_role:
+    name: check-cluster-health
 
+- name: Cluster Observability Operator deployment
+  block:
+    - name: Setup a catalogsource for installing cluster observability operator
+      block:
+        - name: Include the global pull-secret update role to extract podman-secret
+          include_role:
+            name: global-secret-update
+
+            
   - name: Get OCP version
     kubernetes.core.k8s_info:
       api_version: config.openshift.io/v1
@@ -35,22 +47,7 @@
             - "{{ oadp_namespace }}"
 
  
-  # Pause MCP (script pauses master + worker)
  
-  - name: Pause MCPs
-    k8s:
-      api_version: machineconfiguration.openshift.io/v1
-      kind: MachineConfigPool
-      state: present
-      merge_type: merge
-      name: "{{ item }}"
-      definition:
-        spec:
-          paused: true
-    loop:
-      - master
-      - worker
-
   - name: Apply ImageDigestMirrorSet
     kubernetes.core.k8s:
       state: present
@@ -71,27 +68,6 @@
             - brew.registry.redhat.io
             source: registry-proxy.engineering.redhat.com
 
-
-  - name: Resume MCPs
-    k8s:
-      api_version: machineconfiguration.openshift.io/v1
-      kind: MachineConfigPool
-      state: present
-      merge_type: merge
-      name: "{{ item }}"
-      definition:
-        spec:
-          paused: false
-    loop:
-      - master
-      - worker
-
-  - name: Wait for MCPs to be updated
-    shell: oc wait mcp --all --for=condition=updated --timeout=10m
-    register: mcp_wait
-    changed_when: false
-
-  
   # create CatalogSource (Stage IIB)
   
   - name: Create CatalogSource
